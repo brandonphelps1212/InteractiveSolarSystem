@@ -1,0 +1,3 @@
+/Users/brandonphelps/Downloads/InteractiveSolarSystem/build/CMakeFiles/InteractiveSolarSystem.dir
+/Users/brandonphelps/Downloads/InteractiveSolarSystem/build/CMakeFiles/edit_cache.dir
+/Users/brandonphelps/Downloads/InteractiveSolarSystem/build/CMakeFiles/rebuild_cache.dir
