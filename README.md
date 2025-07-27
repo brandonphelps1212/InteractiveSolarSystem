@@ -43,4 +43,3 @@ The **Interactive Solar System Explorer** is a dynamic OpenGL-based simulation t
 
 ---
 
-## Project Structure
