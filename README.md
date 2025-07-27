@@ -1,5 +1,7 @@
 # Interactive Solar System Explorer
 
+The link to the repository is: https://github.com/brandonphelps1212/InteractiveSolarSystem
+
 ## Project Overview
 The **Interactive Solar System Explorer** is a dynamic OpenGL-based simulation that allows users to navigate through space, observe planetary orbits, and explore a hierarchical animation system of celestial bodies. This project is part of our graphics programming course and demonstrates essential concepts such as camera controls, textured surfaces, and orbital mechanics.
 
