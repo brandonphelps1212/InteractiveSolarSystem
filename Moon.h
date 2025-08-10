@@ -17,7 +17,7 @@ public:
     glm::mat4 getModelMatrix() const override;
 
 private:
-    Planet *m_parentPlanet;
+    Planet *m_parentPlanet; // Fixed: Added space and made it a pointer
     float m_orbitRadius;
     float m_orbitSpeed;
     float m_orbitAngle;

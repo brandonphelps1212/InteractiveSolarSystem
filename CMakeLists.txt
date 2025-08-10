@@ -3,7 +3,7 @@ project(InteractiveSolarSystem)
 
 set(CMAKE_CXX_STANDARD 11)
 
-# Include subdirectories if you want to organize by folders
+Include subdirectories if you want to organize by folders
 include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/Camera)
 

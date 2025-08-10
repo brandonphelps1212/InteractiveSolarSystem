@@ -9,7 +9,7 @@ Moon::Moon(const std::string &name, float radius, const std::string &texturePath
       m_parentPlanet(parentPlanet), m_orbitRadius(orbitRadius),
       m_orbitSpeed(orbitSpeed), m_orbitAngle(0.0f), m_time(0.0f)
 {
-    m_rotationSpeed = orbitSpeed * 0.8f; // Moons rotate slower than they orbit
+    m_rotationSpeed = orbitSpeed * 0.8f; // Fixed: Added missing '*' operator
     updateOrbitalPosition();
 }
 

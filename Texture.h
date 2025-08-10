@@ -4,13 +4,13 @@
 #include <string>
 #include <GL/glew.h>
 
-class Texture {
+class Texture
+{
 public:
     GLuint ID;
 
-    Texture(const std::string& path);
+    Texture(const std::string &path);
     void bind() const;
 };
 
 #endif
-
