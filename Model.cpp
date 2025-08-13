@@ -26,7 +26,7 @@ static inline std::string trim(const std::string &s)
 
 void ObjModel::parseFaceToken(const std::string &tok, int &vi, int &ti, int &ni)
 {
-    // token formats: v, v/t, v//n, v/t/n  (OBJ is 1-based indices, negatives supported)
+
     vi = ti = ni = 0;
     std::string acc;
     int vals[3] = {0, 0, 0};
@@ -43,7 +43,7 @@ void ObjModel::parseFaceToken(const std::string &tok, int &vi, int &ti, int &ni)
             else
             {
                 ++idx;
-            } // empty field (e.g., v//n)
+            }
             ++stage;
         }
         else
