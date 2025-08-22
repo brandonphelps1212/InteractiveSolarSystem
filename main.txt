@@ -1,0 +1,394 @@
+// main.cpp - Entry point for Assignment 2 (Person A: Shadows, Asteroid Belt & Atmosphere)
+
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <iostream>
+#include <vector>
+#include "Shader.h"
+#include "Camera/Camera.h"
+#include "Texture.h"
+#include "SolarSystem.h"
+#include "Skybox.h"
+#include "AsteroidBelt.h"
+
+const unsigned int SCR_WIDTH = 1280;
+const unsigned int SCR_HEIGHT = 720;
+
+// Shadow map resolution
+const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+
+Camera camera(glm::vec3(0.0f, 0.0f, 25.0f));
+
+float lastX = SCR_WIDTH / 2.0f;
+float lastY = SCR_HEIGHT / 2.0f;
+bool firstMouse = true;
+bool cursorCaptured = true;
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
+void processInput(GLFWwindow *window);
+void generateSphere(unsigned int &VAO, unsigned int &VBO, int &vertexCount, int sectorCount = 36, int stackCount = 18);
+
+// Updated: Better camera positioning for solar system
+void centerCameraOnSolarSystem()
+{
+    float maxDistance = 15.0f; // Jupiter distance + margin
+    float height = 8.0f;       // Better viewing angle
+    float distance = maxDistance + 8.0f;
+
+    camera.Position = glm::vec3(0.0f, height, distance);
+    camera.Yaw = -90.0f;   // Face toward center
+    camera.Pitch = -10.0f; // Slight downward angle
+}
+
+int main()
+{
+    // Initialize GLFW
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Interactive Solar System Explorer", NULL, NULL);
+    if (window == NULL)
+    {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return -1;
+    }
+    glfwMakeContextCurrent(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    glewExperimental = true;
+    if (glewInit() != GLEW_OK)
+    {
+        std::cerr << "Failed to initialize GLEW" << std::endl;
+        return -1;
+    }
+
+    glEnable(GL_DEPTH_TEST);
+
+    // Shaders
+    Shader shader("vertex.glsl", "fragment.glsl");
+    Shader shadowShader("shadow_vertex.glsl", "shadow_fragment.glsl");
+    Shader particleShader("particle_vertex.glsl", "particle_fragment.glsl");
+    Shader skyboxShader("skybox_vertex.glsl", "skybox_fragment.glsl");
+
+    // Sphere geometry
+    unsigned int sphereVAO, sphereVBO;
+    int vertexCount = 0;
+    generateSphere(sphereVAO, sphereVBO, vertexCount);
+
+    // Solar system
+    SolarSystem solarSystem;
+    solarSystem.initialize();
+
+    // Center the camera automatically on the solar system
+    centerCameraOnSolarSystem();
+
+    // Skybox
+    Skybox skybox("assets/textures/stars.jpg");
+
+    // Asteroid Belt
+    AsteroidBelt asteroidBelt(500, 12.0f, 15.0f); // 500 asteroids between radius 12 and 15
+
+    // Depth map FBO
+    unsigned int depthMapFBO;
+    glGenFramebuffers(1, &depthMapFBO);
+
+    unsigned int depthMap;
+    glGenTextures(1, &depthMap);
+    glBindTexture(GL_TEXTURE_2D, depthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = {1.0, 1.0, 1.0, 1.0};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    std::cout << "Starting solar system simulation with shadows, asteroid belt, and atmosphere..." << std::endl;
+    std::cout << "Controls:" << std::endl;
+    std::cout << "  WASD - Move camera" << std::endl;
+    std::cout << "  Mouse - Look around" << std::endl;
+    std::cout << "  Space - Move up" << std::endl;
+    std::cout << "  Ctrl - Move down" << std::endl;
+    std::cout << "  Shift - Sprint mode" << std::endl;
+    std::cout << "  Alt - Slow mode" << std::endl;
+    std::cout << "  Scroll - Zoom in/out" << std::endl;
+    std::cout << "  Tab - Toggle mouse capture" << std::endl;
+    std::cout << "  R - Reset camera" << std::endl;
+    std::cout << "  T - Toggle tracking mode" << std::endl;
+
+    while (!glfwWindowShouldClose(window))
+    {
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
+        processInput(window);
+        camera.UpdateTracking(deltaTime);
+
+        // 1. Render depth map from light's perspective
+        glm::mat4 lightProjection, lightView;
+        glm::mat4 lightSpaceMatrix;
+        float near_plane = 1.0f, far_plane = 50.0f;
+        lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, near_plane, far_plane);
+        lightView = glm::lookAt(glm::vec3(10.0f, 20.0f, 10.0f), glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+        lightSpaceMatrix = lightProjection * lightView;
+
+        shadowShader.use();
+        shadowShader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        solarSystem.render(shadowShader, sphereVAO, vertexCount, camera.Position);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // 2. Render scene with shadows + atmosphere
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        shader.use();
+
+        glfwGetFramebufferSize(window, &width, &height);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)width / (float)height, 0.1f, 1000.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+        shader.setMat4("projection", projection);
+        shader.setMat4("view", view);
+        shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+        shader.setInt("shadowMap", 1);
+
+        glm::vec3 lightPos = glm::vec3(10.0f, 20.0f, 10.0f);
+        shader.setVec3("lightPos", lightPos);
+        shader.setVec3("viewPos", camera.Position);
+
+        // Atmosphere uniforms
+        shader.setVec3("atmosphereColor", glm::vec3(0.4f, 0.6f, 1.0f)); // Soft blue
+        shader.setFloat("atmosphereIntensity", 0.5f);                   // Adjust glow
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, depthMap);
+
+        // Render skybox
+        glDepthFunc(GL_LEQUAL);
+        skybox.render(skyboxShader, sphereVAO, vertexCount, camera.Position);
+        glDepthFunc(GL_LESS);
+
+        // Solar system update and render
+        solarSystem.update(deltaTime);
+        solarSystem.render(shader, sphereVAO, vertexCount, camera.Position);
+
+        // Render asteroid belt
+        glm::mat4 model = glm::mat4(1.0f);
+        particleShader.use();
+        particleShader.setMat4("projection", projection);
+        particleShader.setMat4("view", view);
+        particleShader.setMat4("model", model);
+        asteroidBelt.render(particleShader);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    glDeleteVertexArrays(1, &sphereVAO);
+    glDeleteBuffers(1, &sphereVBO);
+    glfwTerminate();
+    return 0;
+}
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height)
+{
+    glViewport(0, 0, width, height);
+}
+
+void mouse_callback(GLFWwindow *window, double xpos, double ypos)
+{
+    if (!cursorCaptured)
+        return;
+
+    if (firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos; // Reversed since y-coordinates go from bottom to top
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
+
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
+{
+    camera.ProcessMouseScroll(static_cast<float>(yoffset));
+}
+
+void processInput(GLFWwindow *window)
+{
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
+
+    // Toggle mouse capture with proper key handling
+    static bool tabPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS)
+    {
+        if (!tabPressed)
+        {
+            cursorCaptured = !cursorCaptured;
+            if (cursorCaptured)
+            {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                firstMouse = true;
+            }
+            else
+            {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+            tabPressed = true;
+        }
+    }
+    else
+    {
+        tabPressed = false;
+    }
+
+    // Camera movement - improved speed scaling
+    float cameraSpeed = camera.MovementSpeed;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        cameraSpeed *= 2.0f; // Sprint mode
+    if (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS)
+        cameraSpeed *= 0.3f; // Slow mode
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.ProcessKeyboard(FORWARD, deltaTime * cameraSpeed);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.ProcessKeyboard(BACKWARD, deltaTime * cameraSpeed);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.ProcessKeyboard(LEFT, deltaTime * cameraSpeed);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.ProcessKeyboard(RIGHT, deltaTime * cameraSpeed);
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        camera.ProcessKeyboard(UP, deltaTime * cameraSpeed);
+    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+        camera.ProcessKeyboard(DOWN, deltaTime * cameraSpeed);
+
+    // Camera reset with proper key handling
+    static bool rPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS)
+    {
+        if (!rPressed)
+        {
+            camera.ResetPosition(glm::vec3(0.0f, 5.0f, 20.0f));
+            rPressed = true;
+        }
+    }
+    else
+    {
+        rPressed = false;
+    }
+
+    // Tracking mode toggle with proper key handling
+    static bool tPressed = false;
+    if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS)
+    {
+        if (!tPressed)
+        {
+            camera.SetTrackingMode(!camera.trackingMode, glm::vec3(0.0f, 0.0f, 0.0f));
+            tPressed = true;
+        }
+    }
+    else
+    {
+        tPressed = false;
+    }
+}
+
+void generateSphere(unsigned int &VAO, unsigned int &VBO, int &vertexCount, int sectorCount, int stackCount)
+{
+    std::vector<float> vertices;
+    for (int i = 0; i <= stackCount; ++i)
+    {
+        float stackAngle = glm::pi<float>() / 2 - i * glm::pi<float>() / stackCount;
+        float xy = cos(stackAngle);
+        float z = sin(stackAngle);
+
+        for (int j = 0; j <= sectorCount; ++j)
+        {
+            float sectorAngle = j * 2 * glm::pi<float>() / sectorCount;
+            float x = xy * cos(sectorAngle);
+            float y = xy * sin(sectorAngle);
+
+            vertices.push_back(x);
+            vertices.push_back(y);
+            vertices.push_back(z);
+            vertices.push_back(x);
+            vertices.push_back(y);
+            vertices.push_back(z);
+            vertices.push_back((float)j / sectorCount);
+            vertices.push_back((float)i / stackCount);
+        }
+    }
+
+    std::vector<unsigned int> indices;
+    for (int i = 0; i < stackCount; ++i)
+    {
+        int k1 = i * (sectorCount + 1);
+        int k2 = k1 + sectorCount + 1;
+
+        for (int j = 0; j < sectorCount; ++j, ++k1, ++k2)
+        {
+            indices.push_back(k1);
+            indices.push_back(k2);
+            indices.push_back(k1 + 1);
+
+            indices.push_back(k1 + 1);
+            indices.push_back(k2);
+            indices.push_back(k2 + 1);
+        }
+    }
+
+    std::vector<float> expanded;
+    for (unsigned int idx : indices)
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            expanded.push_back(vertices[idx * 8 + i]);
+        }
+    }
+
+    vertexCount = static_cast<int>(expanded.size()) / 8;
+
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, expanded.size() * sizeof(float), expanded.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+}
